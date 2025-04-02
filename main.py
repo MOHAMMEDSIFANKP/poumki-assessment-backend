@@ -1,4 +1,4 @@
-from fastapi import FastAPI, WebSocket, UploadFile, File, HTTPException, Form, status
+from fastapi import FastAPI, WebSocket, UploadFile, File, HTTPException, Form, status, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi import Request
@@ -8,7 +8,7 @@ import shutil
 from starlette.websockets import WebSocketDisconnect
 from database.database import engine, Base, SessionLocal
 from models import Thumbnail
-
+from decouple import config
 import uuid
 from pathlib import Path
 # Utilities
@@ -25,17 +25,27 @@ app.mount("/media", StaticFiles(directory="media"), name="media")
 MEDIA_DIR = "media"
 os.makedirs(MEDIA_DIR, exist_ok=True)
 
-BASE_URL = "http://localhost:8000"
+BASE_URL = config('BASE_URL')
+
 # Configure CORS
+allow_origins = config("ALLOW_ORIGINS").split(",")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://127.0.0.1:3000","http://localhost:3000"],
+    allow_origins=allow_origins,
     allow_credentials=True,
     allow_methods=["*"], 
     allow_headers=["*"],  
 )
 
 Base.metadata.create_all(bind=engine)
+
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
 
 @app.get("/", tags=["Root"])
 async def read_root():
@@ -121,3 +131,17 @@ async def list_thumbnails(request: Request):
             for t in thumbnails
         ]
     })
+
+@app.delete("/thumbnails/{thumbnail_id}")
+async def delete_thumbnail(thumbnail_id: int, db=Depends(get_db)):
+    thumbnail = db.query(Thumbnail).filter(Thumbnail.id == thumbnail_id).first()
+    if not thumbnail:
+        raise HTTPException(status_code=404, detail="Image not found")
+    
+    file_path = os.path.join(MEDIA_DIR, thumbnail.filename)
+    if os.path.exists(file_path):
+        os.remove(file_path)
+    
+    db.delete(thumbnail)
+    db.commit()
+    return {"message": "Image deleted successfully"}

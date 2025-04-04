@@ -71,8 +71,8 @@ async def websocket_endpoint(websocket: WebSocket):
     try:
         while True:
             data = await websocket.receive_text()
-            # Echo back received data (optional)
-            await websocket.send_text(f"Message received: {data}")
+            # Send JSON response instead of text
+            await websocket.send_json({"message": f"Message received: {data}"})
     except WebSocketDisconnect:
         active_connections.remove(websocket)
         print("Client disconnected")
